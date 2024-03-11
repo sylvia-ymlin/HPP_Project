@@ -1,5 +1,5 @@
 #include <math.h>
-#include <omp.h>
+// #include <omp.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,12 +7,6 @@
 
 /**
     We need to rebuild the quadtree in each time integration.
-    ./a.out 2000 ./input_data/ellipse_N_02000.gal 200 1e-5 0
-    ./compare_gal_files/compare_gal_files 2000 result.gal ./ref_output_data/ellipse_N_02000_after200steps.gal     
-*/
-
-/**
- * the error also related to the initial region
 */
 
 // Define constants
@@ -22,10 +16,8 @@
 #define INITIAL_RB 1.0
 #define INITIAL_DB 0.0
 #define INITIAL_UB 1.0
-#define THETA_MAX 0.25
+#define THETA_MAX 0.0
 
-double G;
-int N;
 
 // Particle_Node
 typedef struct PNode{
@@ -42,6 +34,9 @@ typedef struct QNode{
     double LB, RB, DB, UB;
 } QNode;
 
+double G;
+int N;
+
 // stack
 typedef struct SNode
 {
@@ -49,180 +44,6 @@ typedef struct SNode
     bool is_visited;
     struct SNode* next;
 } SNode;
-
-// Function prototypes
-SNode* init_Stack();
-void push(QNode* qNode, SNode* stack);
-QNode* pop(SNode* stack);
-QNode* create_new_QNode(int index, double LB, double RB, double DB, double UB);
-PNode* create_new_PNode(double pos_x, double pos_y, double mass);
-int insert(QNode* qNode, PNode* particle);
-void postOderTraversal_calculate(QNode* qNode);
-void barnesHut(PNode* particle, QNode* qNode, double* fx, double* fy);
-void destroy(QNode* root);
-
-int main(int argc, char* argv[]) {
-    double time_tol = omp_get_wtime();
-
-    if (argc != 7) {
-        printf("You should enter the following parameters in order:\n");
-        printf("N filname nsteps delta_t graphics n_threads\n");
-        return 1;
-    }
-
-    int N = atoi(argv[1]);
-    char* filename = argv[2];
-    int nsteps = atoi(argv[3]);
-    double delta_t = atof(argv[4]);
-    int graphics = atoi(argv[5]);
-    int n_threads = atoi(argv[6]);
-
-
-    // N = 2000;
-    // char* filename = "./input_data/ellipse_N_02000.gal";
-    // int nsteps = 200;
-    // double delta_t = 1e-5;
-
-    // N = 3;
-    // char* filename = "./input_data/sun_and_planets_N_3.gal";
-    // int nsteps = 20;
-    // double delta_t = 1e-3;
-
-    FILE* data_file = fopen(filename, "rb");
-    if (data_file == NULL) {
-        printf("Error opening file!\n");
-        return 1;
-    }
-
-    // malloc
-    PNode* particles = (PNode*)malloc(N * sizeof(PNode));
-    double* vx = (double*)malloc(N * sizeof(double));
-    double* vy = (double*)malloc(N * sizeof(double));
-    double* brightness = (double*)malloc(N * sizeof(double));
-
-    double* fx = (double*)malloc(N * sizeof(double));
-    double* fy = (double*)malloc(N * sizeof(double));
-    double* mass_inver = (double*)malloc(N * sizeof(double));
-
-
-    double* acc_x = (double*)malloc(N * sizeof(double));
-    double* acc_y = (double*)malloc(N * sizeof(double));
-
-    for (int i = 0; i < N; i++) {
-        fread(&particles[i], sizeof(PNode), 1, data_file);
-        mass_inver[i] = 1.0 / particles[i].mass;
-        fread(&vx[i], sizeof(double), 1, data_file);
-        fread(&vy[i], sizeof(double), 1, data_file);
-        fread(&brightness[i], sizeof(double), 1, data_file);
-        acc_x[i] = 0.0;
-        acc_y[i] = 0.0;
-    }
-
-    fclose(data_file);
-
-    // Time integration
-    G = 100.0 / N;
-    for (int step = 0; step < nsteps; step++) {
-        for(int i=0; i<N; i++){
-            fx[i] = 0.0;
-            fy[i] = 0.0;
-        }
-        // create the tree and initialize the first node
-        QNode* qTree = create_new_QNode(-1, INITIAL_LB, INITIAL_RB, INITIAL_DB, INITIAL_UB);
-        qTree->particle = &particles[0];
-
-        // build the tree
-        for (int i = 1; i < N; i++) {
-            if(insert(qTree, &particles[i]) == 1){
-                return;
-            }
-        }
-
-        // calculate the group mass and center position
-        // Quadtree postorder traversal
-        postOderTraversal_calculate(qTree);
-
-        // Force calculate: Barnes-Hut Algorithm
-        #pragma omp parallel for schedule(static, CHUNK_SIZE) num_threads(n_threads)
-        for (int i = 0; i < N; i++) {
-            barnesHut(&particles[i], qTree, &fx[i], &fy[i]);
-        }
-
-        // update
-        #pragma omp parallel for schedule(static, CHUNK_SIZE) num_threads(n_threads)
-        for (int i = 0; i < N; i++) {
-            // double new_acc_x = fx[i] * mass_inver[i];
-            // double new_acc_y = fy[i] * mass_inver[i];
-
-            // particles[i].pos_x += delta_t * vx[i] + 0.5 * acc_x[i] * delta_t * delta_t;
-            // particles[i].pos_y += delta_t * vy[i] + 0.5 * acc_y[i] * delta_t * delta_t;
-
-            // vx[i] += 0.5 * (acc_x[i] + new_acc_x) * delta_t;
-            // vy[i] += 0.5 * (acc_y[i] + new_acc_y) * delta_t;
-
-            // acc_x[i] = new_acc_x;
-            // acc_y[i] = new_acc_y;
-
-            vx[i] += delta_t * fx[i] * mass_inver[i];
-            vy[i] += delta_t * fy[i] * mass_inver[i];
-
-            particles[i].pos_x += delta_t * vx[i];
-            particles[i].pos_y += delta_t * vy[i];
-            if(particles[i].pos_x < INITIAL_LB || particles[i].pos_x > INITIAL_RB || particles[i].pos_y < INITIAL_DB || particles[i].pos_y > INITIAL_UB){
-                printf("At least one particle is out of the region, and the simulation has been terminated.\n");
-                exit(0);
-            }
-        }
-
-        // char filename[50];
-        // // sprintf(filename, "results_N3_order2/result_%d.gal", step);
-        // sprintf(filename, "results_N3_order2/result_%d.gal", step);
-
-        // FILE* rfile = fopen(filename, "w");
-        // if (rfile == NULL) {
-        //     printf("Error opening file!\n");
-        //     return 1;
-        // }
-
-        // for (int i = 0; i < N; i++) {
-        //     fwrite(&particles[i], sizeof(PNode), 1, rfile);
-        //     fwrite(&vx[i], sizeof(double), 1, rfile);
-        //     fwrite(&vy[i], sizeof(double), 1, rfile);
-        //     fwrite(&brightness[i], sizeof(double), 1, rfile);
-        // }
-        // fclose(rfile);
-        destroy(qTree);
-    }
-
-    FILE* rfile = fopen("result.gal", "w");
-    // FILE* rfile = fopen("N3.gal", "w");
-
-    if (rfile == NULL) {
-        printf("Error opening file!\n");
-        return 1;
-    }
-
-    for (int i = 0; i < N; i++) {
-        fwrite(&particles[i], sizeof(PNode), 1, rfile);
-        fwrite(&vx[i], sizeof(double), 1, rfile);
-        fwrite(&vy[i], sizeof(double), 1, rfile);
-        fwrite(&brightness[i], sizeof(double), 1, rfile);
-    }
-
-    free(particles);
-    free(mass_inver);
-    free(vx);
-    free(vy);
-    free(fx);
-    free(fy);
-    free(brightness);
-    free(acc_x);
-    free(acc_y);
-
-    printf("f_std tests took %7.8f wall seconds.\n", omp_get_wtime() - time_tol);
-
-    return 0;
-}
 
 SNode* init_Stack(){
     SNode* stack = (SNode*)malloc(sizeof(SNode));
@@ -241,6 +62,7 @@ void push(QNode* qNode, SNode* stack){
     stack->next = new_SNode;
 }
 
+
 QNode* pop(SNode* stack){
     SNode* pop_node = stack->next;
     stack->next = pop_node->next;
@@ -248,6 +70,7 @@ QNode* pop(SNode* stack){
     free(pop_node);
     return popped_qNode; 
 }
+
 
 QNode* create_new_QNode(int index, double LB, double RB, double DB, double UB) {
     QNode* new_QNode = malloc(sizeof(QNode));
@@ -282,17 +105,21 @@ PNode* create_new_PNode(double pos_x, double pos_y, double mass) {
 }
 
 // Recursion will cause stack overflow
-int insert(QNode* qNode, PNode* particle) {
+void insert(QNode* qNode, PNode* particle) {
     while(true){
         // A subdomain can only hold one particle.
         double mid_x = 0.5 * (qNode->LB + qNode->RB);
         double mid_y = 0.5 * (qNode->UB + qNode->DB);
         if (qNode->is_leaf) {
-            if(particle->pos_x == qNode->particle->pos_x && particle->pos_y == qNode->particle->pos_y){
-                printf("Two particles are detected at the same location and the simulation terminates.\n");
-                return 1;
-            }
             qNode->is_leaf = false;
+            /**
+                typedef struct{
+                    bool is_leaf;
+                    PNode* particle;
+                    struct QNode* child[4];
+                    double LB, RB, DB, UB;
+                }QNode;
+            */
             /**        UB
                 |-------|-------|
                 |   1   |   3   |
@@ -323,8 +150,28 @@ int insert(QNode* qNode, PNode* particle) {
             qNode = qNode->child[index];
         }
     }
-    return 0;
+
 }
+
+// void postOderTraversal_calculate(QNode* qNode) {
+//     if (qNode == NULL || qNode->is_leaf) {
+//         return;
+//     }
+
+//     for (int i = 0; i < 4; i++) {
+//         postOderTraversal_calculate(qNode->child[i]);
+//     }
+
+//     double pos_x = 0.0, pos_y = 0.0, mass = 0.0;
+//     for (int i = 0; i < 4; ++i) {
+//         if (qNode->child[i] != NULL) {
+//             pos_x += qNode->child[i]->particle->mass * qNode->child[i]->particle->pos_x;
+//             pos_y += qNode->child[i]->particle->mass * qNode->child[i]->particle->pos_y;
+//             mass += qNode->child[i]->particle->mass;
+//         }
+//     }
+//     qNode->particle = create_new_PNode(pos_x/mass, pos_y/mass, mass);
+// }
 
 // since the deepth of the tree is unpredictable, it is unable to use resursion to implement the traversal
 
@@ -369,6 +216,37 @@ void postOderTraversal_calculate(QNode* qNode) {
     free(stack);
 }
 
+// void barnesHut(PNode* particle, QNode* qNode, double* fx, double* fy) {
+//     double theta;
+//     // itself
+//     if(qNode == NULL || qNode->particle == particle){
+//         return;
+//     }
+//     if (qNode->is_leaf == false) {
+//         double mid_x = 0.5 * (qNode->LB + qNode->RB);
+//         double mid_y = 0.5 * (qNode->DB + qNode->UB);
+//         double width = (qNode->RB - qNode->LB);
+//         theta = width / sqrt((particle->pos_x - mid_x) * (particle->pos_x - mid_x) +
+//                                 (particle->pos_y - mid_y) * (particle->pos_y - mid_y));
+//     }
+//     if (qNode->is_leaf || theta <= THETA_MAX) {
+//         double r_x = particle->pos_x - qNode->particle->pos_x;
+//         double r_y = particle->pos_y - qNode->particle->pos_y;
+//         double r_squared = r_x * r_x + r_y * r_y;
+//         double r_plummer = sqrt(r_squared) + EPSILON_O;
+//         double force_factor = -G * particle->mass * qNode->particle->mass / (r_plummer * r_plummer * r_plummer);
+//         *fx += force_factor * r_x;
+//         *fy += force_factor * r_y;
+//         return;
+//     } else {
+//         for(int i=0; i<4; i++){
+//             barnesHut(particle, qNode->child[i], fx, fy); 
+//         }
+//     }
+    
+//     return;
+// }
+
 // pre-order
 void barnesHut(PNode* particle, QNode* qNode, double* fx, double* fy) {
     double theta;
@@ -389,7 +267,7 @@ void barnesHut(PNode* particle, QNode* qNode, double* fx, double* fy) {
                                     (particle->pos_y - mid_y) * (particle->pos_y - mid_y));
         }
         // compute the force
-        if((current->is_leaf && (current->particle != particle) )|| theta <= THETA_MAX){
+        if(current->is_leaf && (current->particle != particle) || theta <= THETA_MAX){
             double r_x = particle->pos_x - current->particle->pos_x;
             double r_y = particle->pos_y - current->particle->pos_y;
             double r_squared = r_x * r_x + r_y * r_y;
@@ -421,4 +299,137 @@ void destroy(QNode* root){
         free(root->particle);
         free(root);
     }
+}
+
+
+
+int main(int argc, char* argv[]) {
+    // double time_tol = omp_get_wtime();
+
+    if (argc != 6) {
+        printf("You should enter the following parameters in order:\n");
+        printf("N filname nsteps delta_t graphics n_threads\n");
+        return 1;
+    }
+
+    int N = atoi(argv[1]);
+    char* filename = argv[2];
+    int nsteps = atoi(argv[3]);
+    double delta_t = atof(argv[4]);
+    int graphics = atoi(argv[5]);
+    // int n_threads = atoi(argv[6]);
+
+    // N = 2000;
+    // char* filename = "./input_data/ellipse_N_02000.gal";
+    // int nsteps = 200;
+    // double delta_t = 1e-5;
+
+
+    FILE* data_file = fopen(filename, "rb");
+    if (data_file == NULL) {
+        printf("Error opening file!\n");
+        return 1;
+    }
+
+    // malloc
+    PNode* particles = (PNode*)malloc(N * sizeof(PNode));
+    double* vx = (double*)malloc(N * sizeof(double));
+    double* vy = (double*)malloc(N * sizeof(double));
+    double* brightness = (double*)malloc(N * sizeof(double));
+
+    double* fx = (double*)malloc(N * sizeof(double));
+    double* fy = (double*)malloc(N * sizeof(double));
+    double* mass_inver = (double*)malloc(N * sizeof(double));
+
+
+    // double* acc_x = (double*)malloc(N * sizeof(double));
+    // double* acc_y = (double*)malloc(N * sizeof(double));
+
+    for (int i = 0; i < N; i++) {
+        fread(&particles[i], sizeof(PNode), 1, data_file);
+        mass_inver[i] = 1.0 / particles[i].mass;
+        fread(&vx[i], sizeof(double), 1, data_file);
+        fread(&vy[i], sizeof(double), 1, data_file);
+        fread(&brightness[i], sizeof(double), 1, data_file);
+        // acc_x[i] = 0.0;
+        // acc_y[i] = 0.0;
+    }
+
+    fclose(data_file);
+
+    // Time integration
+    G = 100.0 / N;
+    for (int step = 0; step < nsteps; step++) {
+        for(int i=0; i<N; i++){
+            fx[i] = 0.0;
+            fy[i] = 0.0;
+        }
+        // create the tree and initialize the first node
+        QNode* qTree = create_new_QNode(-1, INITIAL_LB, INITIAL_RB, INITIAL_DB, INITIAL_UB);
+        qTree->particle = &particles[0];
+
+        // build the tree
+        for (int i = 1; i < N; i++) {
+            insert(qTree, &particles[i]);
+        }
+
+        // calculate the group mass and center position
+        // Quadtree postorder traversal
+        postOderTraversal_calculate(qTree);
+
+        // Force calculate: Barnes-Hut Algorithm
+        for (int i = 0; i < N; i++) {
+            barnesHut(&particles[i], qTree, &fx[i], &fy[i]);
+        }
+
+        // update
+        for (int i = 0; i < N; i++) {
+            // double new_acc_x = fx[i] * mass_inver[i];
+            // double new_acc_y = fy[i] * mass_inver[i];
+
+            // pos_x[i] += delta_t * vx[i] + 0.5 * acc_x[i] * delta_t * delta_t;
+            // pos_y[i] += delta_t * vy[i] + 0.5 * acc_y[i] * delta_t * delta_t;
+
+            // vx[i] += 0.5 * (acc_x[i] + new_acc_x) * delta_t;
+            // vy[i] += 0.5 * (acc_y[i] + new_acc_y) * delta_t;
+
+            // acc_x[i] = new_acc_x;
+            // acc_y[i] = new_acc_y;
+
+            vx[i] += delta_t * fx[i] * mass_inver[i];
+            vy[i] += delta_t * fy[i] * mass_inver[i];
+
+            particles[i].pos_x += delta_t * vx[i];
+            particles[i].pos_y += delta_t * vy[i];
+        }
+
+        destroy(qTree);
+    }
+
+    FILE* rfile = fopen("result.gal", "w");
+    if (rfile == NULL) {
+        printf("Error opening file!\n");
+        return 1;
+    }
+
+    for (int i = 0; i < N; i++) {
+        fwrite(&particles[i], sizeof(PNode), 1, rfile);
+        // printf("%.16f\t\t\t%.16f\n", particles[i].pos_x, particles[i].pos_y);
+        // printf("%.16f\t\t\t%.16f\n", fx[i], fy[i]);
+        fwrite(&vx[i], sizeof(double), 1, rfile);
+        fwrite(&vy[i], sizeof(double), 1, rfile);
+        fwrite(&brightness[i], sizeof(double), 1, rfile);
+    }
+
+    // free(particles);
+    free(mass_inver);
+    free(vx);
+    free(vy);
+    free(fx);
+    free(fy);
+    free(brightness);
+
+    // printf("f_std tests took %7.8f wall seconds.\n", omp_get_wtime() - time_tol);
+
+    return 0;
 }
