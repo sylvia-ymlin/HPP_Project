@@ -8,7 +8,7 @@
 #define EPSILON_O 1e-3
 #define CHUNK_SIZE 8
 #define THETA_MAX 0.0
-#define TWO_ORDER 0
+#define TWO_ORDER 1
 
 double G;
 int N;
@@ -49,23 +49,23 @@ int main(int argc, char* argv[]) {
     double time_tol = get_wall_seconds();
     #endif
 
-    if (argc != 6) {
-        printf("You should enter the following parameters in order:\n");
-        printf("N filname nsteps delta_t graphics n_threads\n");
-        return 1;
-    }
+    // if (argc != 6) {
+    //     printf("You should enter the following parameters in order:\n");
+    //     printf("N filname nsteps delta_t graphics n_threads\n");
+    //     return 1;
+    // }
 
     int N = atoi(argv[1]);
     char* filename = argv[2];
     int nsteps = atoi(argv[3]);
     double delta_t = atof(argv[4]);
-    int graphics = atoi(argv[5]);
+    double theta_0 = atof(argv[5]);
     // int n_threads = atoi(argv[6]);
     int n_threads = 8;
 
     // int N = 3;
     // char* filename = "./input_data/sun_and_planets_N_3.gal";
-    // int nsteps = 1;
+    // int nsteps = 1000000;
     // double delta_t = 1e-8;
 
     FILE* data_file = fopen(filename, "rb");
@@ -188,6 +188,7 @@ int main(int argc, char* argv[]) {
 
     for (int i = 0; i < N; i++) {
         fwrite(&particles[i], sizeof(PNode), 1, rfile);
+        // printf("%f %f\n", particles[i].pos_x, particles[i].pos_y);
         fwrite(&vx[i], sizeof(double), 1, rfile);
         fwrite(&vy[i], sizeof(double), 1, rfile);
         fwrite(&brightness[i], sizeof(double), 1, rfile);
