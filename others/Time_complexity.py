@@ -59,6 +59,6 @@ plt.scatter(N_array, execution_times)
 # plt.tick_params(axis='both', which='major', labelsize=16)
 
 # Change the name here if you modify N, else it would overwrite the previous plot
-plt.savefig('threads_pic_OpenMP1000.png', dpi=300, bbox_inches='tight')
+plt.savefig('time_complexity.png', dpi=300, bbox_inches='tight')
 
 plt.show()
