@@ -3,10 +3,12 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/time.h>
 
 #define EPSILON_O 1e-3
 #define CHUNK_SIZE 8
-#define THETA_MAX 0.25
+#define THETA_MAX 0.0
+#define TWO_ORDER 1
 
 double G;
 int N;
@@ -119,6 +121,15 @@ int main(int argc, char* argv[]) {
     // Time integration
     G = 100.0 / N;
     for (int step = 0; step < nsteps; step++) {
+        #ifdef TWO_ORDER
+        for(int i=0; i < N; i++){
+            acc_x[i] = fx[i] * mass_inver[i];
+            acc_y[i] = fy[i] * mass_inver[i];
+            particles[i].pos_x += delta_t * vx[i] + 0.5 * delta_t * delta_t * acc_x[i];
+            particles[i].pos_y += delta_t * vy[i] + 0.5 * delta_t * delta_t * acc_y[i];
+        }
+        #endif
+
 #ifdef _OPENMP
 #pragma omp parallel for schedule(dynamic, CHUNK_SIZE) num_threads(n_threads)
 #endif
@@ -249,20 +260,16 @@ int main(int argc, char* argv[]) {
 #endif
         // f_std tests took 0.27875203 wall seconds
         for (int i = 0; i < N; i++) {
+            #ifdef TWO_ORDER
+            vx[i] += 0.5 * delta_t * (fx[i] * mass_inver[i] + acc_x[i]);
+            vy[i] += 0.5 * delta_t * (fy[i] * mass_inver[i] + acc_y[i]);
+            #else
             vx[i] += delta_t * fx[i] * mass_inver[i];
             vy[i] += delta_t * fy[i] * mass_inver[i];
 
             particles[i].pos_x += delta_t * vx[i];
             particles[i].pos_y += delta_t * vy[i];
-
-            // particles[i].pos_x += delta_t * vx[i] + 0.5 * delta_t * delta_t * acc_x[i];
-            // particles[i].pos_y += delta_t * vy[i] + 0.5 * delta_t * delta_t * acc_y[i];
-            // double new_acc_x = fx[i] * mass_inver[i];
-            // double new_acc_y = fy[i] * mass_inver[i];
-            // vx[i] += 0.5 * delta_t * (new_acc_x + acc_x[i]);
-            // vy[i] += 0.5 * delta_t * (new_acc_y + acc_y[i]);
-            // acc_x[i] = new_acc_x;
-            // acc_y[i] = new_acc_y;
+            #endif
 
             if (particles[i].pos_x < LB || particles[i].pos_x > RB || particles[i].pos_y < DB || particles[i].pos_y > UB) {
                 printf("At least one particle is out of the region, and the simulation has been terminated.\n");
