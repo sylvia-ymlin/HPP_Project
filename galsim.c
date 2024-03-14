@@ -56,9 +56,20 @@ void preOrder(TNode* tNode) {
     }
 }
 
+static double get_wall_seconds() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    double seconds = tv.tv_sec + (double)tv.tv_usec / 1000000;
+    return seconds;
+}
+
 int main(int argc, char* argv[]) {
     // printf("%d\n", sizeof(TNode));
+    #ifdef _OPENMP
     double time_tol = omp_get_wtime();
+    #else
+    double time_tol = get_wall_seconds();
+    #endif
 
     if (argc != 6) {
         printf("You should enter the following parameters in order:\n");
@@ -108,7 +119,9 @@ int main(int argc, char* argv[]) {
     // Time integration
     G = 100.0 / N;
     for (int step = 0; step < nsteps; step++) {
-#pragma omp parallel for schedule(static, CHUNK_SIZE) num_threads(n_threads)
+#ifdef _OPENMP
+#pragma omp parallel for schedule(dynamic, CHUNK_SIZE) num_threads(n_threads)
+#endif
         for (int i = 0; i < N; i++) {
             fx[i] = 0.0;
             fy[i] = 0.0;
@@ -159,7 +172,9 @@ int main(int argc, char* argv[]) {
         TNode* tTree2;
         TNode* tTree3;
         TNode* tTree4;
+#ifdef _OPENMP
 #pragma omp parallel num_threads(n_threads)
+#endif
         {
 #pragma omp sections
             {
@@ -219,7 +234,9 @@ int main(int argc, char* argv[]) {
         tTree->particle->pos_y /= tTree->particle->mass;
 
 // Force calculate: Barnes-Hut Algorithm
-#pragma omp parallel for schedule(static, CHUNK_SIZE) num_threads(n_threads)
+#ifdef _OPENMP
+#pragma omp parallel for schedule(dynamic, CHUNK_SIZE) num_threads(n_threads)
+#endif
         for (int i = 0; i < N; i++) {
             barnesHut(&particles[i], tTree, &fx[i], &fy[i]);
         }
@@ -227,7 +244,9 @@ int main(int argc, char* argv[]) {
 // printf("%lu\n", sizeof(tTree->particle));
 
 // update
-#pragma omp parallel for schedule(guided, CHUNK_SIZE) num_threads(n_threads)
+#ifdef _OPENMP
+#pragma omp parallel for schedule(dynamic, CHUNK_SIZE) num_threads(n_threads)
+#endif
         // f_std tests took 0.27875203 wall seconds
         for (int i = 0; i < N; i++) {
             vx[i] += delta_t * fx[i] * mass_inver[i];
@@ -268,7 +287,11 @@ int main(int argc, char* argv[]) {
         fwrite(&brightness[i], sizeof(double), 1, rfile);
     }
 
+    #ifdef _OPENMP
     printf("f_std tests took %7.8f wall seconds.\n", omp_get_wtime() - time_tol);
+    #else
+    printf("f_std tests took %7.8f wall seconds.\n", get_wall_seconds() - time_tol);
+    #endif
 
     return 0;
 }
