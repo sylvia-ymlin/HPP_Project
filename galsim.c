@@ -8,7 +8,7 @@
 #define EPSILON_O 1e-3
 #define CHUNK_SIZE 8
 #define THETA_MAX 0.0
-#define TWO_ORDER 1
+#define TWO_ORDER 0
 
 double G;
 int N;
@@ -49,19 +49,17 @@ int main(int argc, char* argv[]) {
     double time_tol = get_wall_seconds();
     #endif
 
-    // if (argc != 6) {
-    //     printf("You should enter the following parameters in order:\n");
-    //     printf("N filname nsteps delta_t graphics n_threads\n");
-    //     return 1;
-    // }
+    if (argc != 6) {
+        printf("You should enter the following parameters in order:\n");
+        printf("N filname nsteps delta_t graphics n_threads\n");
+        return 1;
+    }
 
     int N = atoi(argv[1]);
     char* filename = argv[2];
     int nsteps = atoi(argv[3]);
     double delta_t = atof(argv[4]);
-    double theta_0 = atof(argv[5]);
-    // int n_threads = atoi(argv[6]);
-    int n_threads = 8;
+    int n_threads = atoi(argv[5]);
 
     // int N = 3;
     // char* filename = "./input_data/sun_and_planets_N_3.gal";
