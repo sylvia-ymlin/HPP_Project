@@ -8,7 +8,7 @@
 #define EPSILON_O 1e-3
 #define CHUNK_SIZE 8
 #define THETA_MAX 0.0
-#define TWO_ORDER 0
+#define TWO_ORDER 1
 
 double G;
 int N;
