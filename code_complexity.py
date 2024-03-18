@@ -1,15 +1,22 @@
-import subprocess
-import time
+import math
+from statistics import mean
+from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
-import numpy as np
+import time
+import subprocess
+
+# Define the form of the function you want to fit
+def func(x, a, b, c):
+    return a * x**2 + b * x + c
 
 # Values of N to test
-N_values = [10, 100, 200, 400, 800, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000]
+N_values = [10, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000]
 
 # List to store execution times
 times = []
 
 for N in N_values:
+    print(f"Running for N={N}")
     # Generate the filename based on N
     filename = f"./input_data/ellipse_N_{N:05d}.gal"
 
@@ -19,7 +26,7 @@ for N in N_values:
     # List to store the execution times for each run
     run_times = []
 
-    for _ in range(5):
+    for _ in range(10):
         # Measure the execution time
         start_time = time.time()
         subprocess.run(cmd)
@@ -29,16 +36,27 @@ for N in N_values:
         run_times.append((end_time - start_time))
 
     # Store the minimum execution time
-    times.append(min(run_times))
+    times.append(mean(run_times)/N)
+
+
+# Fit the data using curve_fit
+popt, pcov = curve_fit(func, N_values, times)
+
+# Generate y-values based on the fit
+y_fit = [func(x, *popt) for x in N_values]
 
 # Plot the execution times
 plt.figure(figsize=(10, 6))
-plt.plot(N_values, times, 'o-', label='Execution time')
-plt.plot(N_values, np.log(N_values), 'o-', label='log N')
-plt.xlabel('N')
-plt.ylabel('Execution time / log N')
-plt.title('Execution time and log N vs N')
-plt.grid(True)
+
+# Plot the scatter plot
+plt.scatter(N_values, times, label='Execution time')
+
+# Plot the fitted curve
+plt.plot(N_values, y_fit, 'r-', label='Fitted Curve')
+
+plt.xlabel('N values')
+plt.ylabel('Execution time')
+# Add a legend
 plt.legend()
 
 # Save the figure

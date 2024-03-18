@@ -7,7 +7,7 @@
 
 #define EPSILON_O 1e-3
 #define CHUNK_SIZE 8
-#define THETA_MAX 0.0
+#define THETA_MAX 0.5
 #define TWO_ORDER 1
 
 double G;
@@ -20,19 +20,18 @@ typedef struct PNode {
 } PNode;
 
 typedef struct TNode {
-    float LB, RB, DB, UB;
+    double LB, RB, DB, UB;
     struct TNode* child[4];
     PNode* particle;
     bool is_leaf;
 } TNode;
 
-TNode* create_new_TNode(int index, double LB, double RB, double DB, double UB);                    // Creates a new QNode with specified boundaries
-TNode* buildTree(PNode* particles, int N, float LB, float RB, float DB, float UB, int n_threads);  // Builds the quadtree
-int insert(TNode* qNode, PNode* particle);                                                         // Inserts a particle into the quadtree
-void barnesHut(PNode* particle, TNode* qNode, double* fx, double* fy);                             // Applies the Barnes-Hut algorithm to calculate the forces on particles
-void preOrder(TNode* tNode);                                                                       // Preorder traversal of the quadtree to compute the centroid of each object
-
-void destroy(TNode* root);  // Destroys the quadtree and frees memory
+TNode* create_new_TNode(int index, double LB, double RB, double DB, double UB);
+TNode* buildTree(PNode* particles, int N, float LB, float RB, float DB, float UB, int n_threads);
+int insert(TNode* qNode, PNode* particle);                                                         
+void barnesHut(PNode* particle, TNode* qNode, double* fx, double* fy);
+void preOrder(TNode* tNode);
+void destroy(TNode* root);
 
 static double get_wall_seconds() {  // Returns the current time in seconds, when openmon is not used
     struct timeval tv;
@@ -51,7 +50,7 @@ int main(int argc, char* argv[]) {
 
     if (argc != 6) {
         printf("You should enter the following parameters in order:\n");
-        printf("N filname nsteps delta_t graphics n_threads\n");
+        printf("N filname nsteps delta_t n_threads\n");
         return 1;
     }
 
@@ -95,15 +94,10 @@ int main(int argc, char* argv[]) {
 
     fclose(data_file);
 
-    // float LB = -5.0;
-    // float RB = 6.0;
-    // float DB = -5.0;
-    // float UB = 6.0;
-
-    float LB = 0.0;
-    float RB = 1.0;
-    float DB = 0.0;
-    float UB = 1.0;
+    double LB = -1.0;
+    double RB = 2.0;
+    double DB = -1.0;
+    double UB = 2.0;
 
     G = 100.0 / N;
 
@@ -129,6 +123,10 @@ int main(int argc, char* argv[]) {
             acc_y[i] = fy[i] * mass_inver[i];
             particles[i].pos_x += delta_t * vx[i] + 0.5 * delta_t * delta_t * acc_x[i];
             particles[i].pos_y += delta_t * vy[i] + 0.5 * delta_t * delta_t * acc_y[i];
+            if(particles[i].pos_x < LB || particles[i].pos_x > RB || particles[i].pos_y < DB || particles[i].pos_y > UB) {
+                printf("At least one particle is out of the region, and the simulation has been terminated.\n");
+                exit(0);
+            }
         }
         #endif
 
@@ -142,7 +140,6 @@ int main(int argc, char* argv[]) {
 
         TNode* tTree = buildTree(particles, N, LB, RB, DB, UB, n_threads);
 
-        // Force calculate: Barnes-Hut Algorithm
         #ifdef _OPENMP
         #pragma omp parallel for schedule(dynamic, CHUNK_SIZE) num_threads(n_threads)
         #endif
@@ -150,12 +147,10 @@ int main(int argc, char* argv[]) {
             barnesHut(&particles[i], tTree, &fx[i], &fy[i]);
         }
 
-
         // update
         #ifdef _OPENMP
         #pragma omp parallel for schedule(dynamic, CHUNK_SIZE) num_threads(n_threads)
         #endif
-        // f_std tests took 0.27875203 wall seconds
         for (int i = 0; i < N; i++) {
             #if TWO_ORDER
             vx[i] += 0.5 * delta_t * (fx[i] * mass_inver[i] + acc_x[i]);
@@ -163,15 +158,13 @@ int main(int argc, char* argv[]) {
             #else
             vx[i] += delta_t * fx[i] * mass_inver[i];
             vy[i] += delta_t * fy[i] * mass_inver[i];
-
             particles[i].pos_x += delta_t * vx[i];
             particles[i].pos_y += delta_t * vy[i];
-            #endif
-
             if (particles[i].pos_x < LB || particles[i].pos_x > RB || particles[i].pos_y < DB || particles[i].pos_y > UB) {
                 printf("At least one particle is out of the region, and the simulation has been terminated.\n");
                 exit(0);
             }
+            #endif
         }
 
         destroy(tTree);
@@ -186,7 +179,6 @@ int main(int argc, char* argv[]) {
 
     for (int i = 0; i < N; i++) {
         fwrite(&particles[i], sizeof(PNode), 1, rfile);
-        // printf("%f %f\n", particles[i].pos_x, particles[i].pos_y);
         fwrite(&vx[i], sizeof(double), 1, rfile);
         fwrite(&vy[i], sizeof(double), 1, rfile);
         fwrite(&brightness[i], sizeof(double), 1, rfile);
@@ -200,6 +192,7 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
+
 
 TNode* buildTree(PNode* particles, int N, float LB, float RB, float DB, float UB, int n_threads) {
     // Divide the region into 4 squares
@@ -221,30 +214,23 @@ TNode* buildTree(PNode* particles, int N, float LB, float RB, float DB, float UB
         if (particles[i].pos_x == 0.5 * (LB + RB) && particles[i].pos_y == 0.5 * (DB + UB)) {
             group1_ofParticles[N1] = i;
             N1++;
-            continue;
-        }
-        if (particles[i].pos_x >= square1[0] && particles[i].pos_x <= square1[1] &&
+        } else if (particles[i].pos_x >= square1[0] && particles[i].pos_x <= square1[1] &&
             particles[i].pos_y >= square1[2] && particles[i].pos_y <= square1[3]) {
             group1_ofParticles[N1] = i;
             N1++;
-        }
-        if (particles[i].pos_x > square2[0] && particles[i].pos_x <= square2[1] &&
+        }else if (particles[i].pos_x > square2[0] && particles[i].pos_x <= square2[1] &&
             particles[i].pos_y >= square2[2] && particles[i].pos_y < square2[3]) {
             group2_ofParticles[N2] = i;
             N2++;
-        }
-        if (particles[i].pos_x >= square3[0] && particles[i].pos_x < square3[1] &&
+        }else if (particles[i].pos_x >= square3[0] && particles[i].pos_x < square3[1] &&
             particles[i].pos_y > square3[2] && particles[i].pos_y <= square3[3]) {
             group3_ofParticles[N3] = i;
             N3++;
-        }
-        if (particles[i].pos_x >= square4[0] && particles[i].pos_x <= square4[1] &&
-            particles[i].pos_y >= square4[2] && particles[i].pos_y <= square4[3]) {
+        }else{
             group4_ofParticles[N4] = i;
             N4++;
         }
     }
-    
     // Create and initialize the subtrees
     TNode* subTrees[4];
     for (int i = 0; i < 4; i++) {
@@ -306,6 +292,7 @@ TNode* buildTree(PNode* particles, int N, float LB, float RB, float DB, float UB
             }
         }
     }
+    
 
     TNode* tTree = create_new_TNode(-1, LB, RB, DB, UB);
     tTree->is_leaf = 0;
@@ -347,14 +334,15 @@ int insert(TNode* tNode, PNode* particle) {
     double mid_x = 0.5 * (tNode->LB + tNode->RB);
     double mid_y = 0.5 * (tNode->UB + tNode->DB);
     if (tNode->is_leaf) {
-        if (particle->pos_x == tNode->particle->pos_x && particle->pos_y == tNode->particle->pos_y) {
+        if (((particle->pos_x - tNode->particle->pos_x)<1e-8 && (particle->pos_x - tNode->particle->pos_x)>-1e-8) && 
+            ((particle->pos_y - tNode->particle->pos_y)<1e-8 && (particle->pos_y - tNode->particle->pos_y)>-1e-8)) {
             printf("Two particles are detected at the same location and the simulation terminates.\n");
-            return 1;
+            exit(0);
         }
         tNode->is_leaf = 0;
 
         int index = (tNode->particle->pos_y > mid_y) + 2 * (tNode->particle->pos_x > mid_x);
-
+    
         tNode->child[index] = create_new_TNode(index, tNode->LB, tNode->RB, tNode->DB, tNode->UB);
         tNode->child[index]->particle = tNode->particle;
         tNode->particle = malloc(sizeof(PNode));
@@ -369,8 +357,6 @@ int insert(TNode* tNode, PNode* particle) {
     tNode->particle->mass += particle->mass;
 
     int index = (particle->pos_y > mid_y) + 2 * (particle->pos_x > mid_x);
-
-    // printf(" %d %d\n", index, index_test);
 
     if (tNode->child[index] == NULL) {
         tNode->child[index] = create_new_TNode(index, tNode->LB, tNode->RB, tNode->DB, tNode->UB);
