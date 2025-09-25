@@ -6,8 +6,8 @@ This project implements the **Barnes–Hut treecode** to reduce that cost, combi
 ## Key Aspects
 - Implementation in C with **OpenMP** for parallel force computation  
 - Two integrators: **symplectic Euler** and **Velocity Verlet**  
-- Use of **K‑means clustering** to improve spatial locality and load balancing  
-- Optimizations like precomputing reciprocals, minimizing branching  
+- Using **K‑means clustering** to improve spatial locality and load balancing  
+- Optimizations including precomputing reciprocals, minimizing branching  
 - Performance and accuracy benchmarks via accompanying python scripts
 
 **Code** | **Report**  
