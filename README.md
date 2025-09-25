@@ -11,7 +11,7 @@ This project implements the **Barnes–Hut treecode** to reduce that cost, combi
 - Performance and accuracy benchmarks via accompanying python scripts
 
 **Code** | **Report**  
-[Code](https://github.com/sylvia-ymlin/HPP_Project/tree/main/project) | [Project Report (PDF)](https://github.com/sylvia-ymlin/HPP_Project/blob/main/project/report.pdf)
+[Code](https://github.com/sylvia-ymlin/HPP_Project/tree/main/project) | [Report (PDF)](https://github.com/sylvia-ymlin/HPP_Project/blob/main/project/report.pdf)
 
 ---
 
