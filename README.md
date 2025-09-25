@@ -1,4 +1,4 @@
-# High‑Performance N‑Body Simulation (HPP_Project)
+# High‑Performance N‑Body Simulation
 
 Gravitational N‑body simulation suffers from O(N²) complexity in naïve pairwise force computation. 
 This project implements the **Barnes–Hut treecode** to reduce that cost, combined with parallelization and memory optimizations.
